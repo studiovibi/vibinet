@@ -26,7 +26,7 @@ type GamePost =
 const TICKS_PER_SECOND = 24; // ticks per second
 const TOLERANCE = 100; // milliseconds
 const PIXELS_PER_SECOND = 200;
-const PIXELS_PER_TICK = PIXELS_PER_SECOND / 24;
+const PIXELS_PER_TICK = PIXELS_PER_SECOND / TICKS_PER_SECOND;
 
 // Initial state: empty map
 const initial_state: GameState = {};

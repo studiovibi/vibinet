@@ -16,6 +16,18 @@ export class StateMachine<S, P> {
   ticks_per_second: number;
   tolerance: number;
   room_posts: Map<number, Post<P>>;
+  
+  // Compute the authoritative time a post takes effect.
+  private official_time(post: Post<P>): number {
+    return (post.client_time <= post.server_time - this.tolerance)
+      ? (post.server_time - this.tolerance)
+      : post.client_time;
+  }
+
+  // Convert a post into its authoritative tick.
+  private official_tick(post: Post<P>): number {
+    return this.time_to_tick(this.official_time(post));
+  }
 
   constructor(
     room: string,
@@ -39,9 +51,7 @@ export class StateMachine<S, P> {
       // Watch the room with callback
       client.watch(this.room, (post) => {
         // Strategic debug: log post summary with effective tick
-        const ot = (post.client_time <= post.server_time - this.tolerance)
-          ? (post.server_time - this.tolerance)
-          : post.client_time;
+        const ot = this.official_time(post);
         const tick = this.time_to_tick(ot);
         const kind = (post as any)?.data?.$ ?? "?";
         console.log(`[SM] recv idx=${post.index} kind=${kind} st=${post.server_time} ct=${post.client_time} -> tick=${tick}`);
@@ -72,12 +82,8 @@ export class StateMachine<S, P> {
   initial_time(): number | null {
     const post = this.room_posts.get(0);
     if (!post) return null;
-    // Use the same official time rule as the timeline, to avoid
-    // placing index 0 before the initial tick window.
-    const official_time = (post.client_time <= post.server_time - this.tolerance)
-      ? (post.server_time - this.tolerance)
-      : post.client_time;
-    return official_time;
+    // Use the same authoritative time rule used everywhere else
+    return this.official_time(post);
   }
 
   initial_tick(): number | null {
@@ -105,18 +111,7 @@ export class StateMachine<S, P> {
     const timeline = new Map<number, Post<P>[]>();
 
     for (const post of this.room_posts.values()) {
-      // Compute official time for this post
-      let official_time: number;
-      if (post.client_time <= post.server_time - this.tolerance) {
-        official_time = post.server_time - this.tolerance;
-      } else {
-        official_time = post.client_time;
-      }
-
-      // Compute official tick
-      const official_tick = this.time_to_tick(official_time);
-
-      // Add post to timeline
+      const official_tick = this.official_tick(post);
       if (!timeline.has(official_tick)) {
         timeline.set(official_tick, []);
       }
