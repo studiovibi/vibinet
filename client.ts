@@ -18,7 +18,6 @@ type MessageHandler = (message: any) => void;
 const room_watchers = new Map<string, MessageHandler>();
 
 // Connection + time sync state
-let is_ready = false;
 let is_synced = false;
 const sync_listeners: Array<() => void> = [];
 
@@ -27,32 +26,19 @@ function now(): number {
 }
 
 export function server_time(): number {
-  // If not synced yet, return local time
   if (!isFinite(time_sync.clock_offset)) {
-    throw "no server time yet";
+    throw new Error("server_time() called before initial sync");
   }
   return Math.floor(now() + time_sync.clock_offset);
-}
-
-// Helper to send message (no global queue)
-function send(message: string): void {
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(message);
-    return;
-  }
-  if (ws.readyState === WebSocket.CONNECTING) {
-    ws.addEventListener("open", () => ws.send(message), { once: true });
-    return;
-  }
-  throw new Error("WebSocket not open when sending message");
 }
 
 // Setup time sync
 ws.addEventListener("open", () => {
   console.log("[WS] Connected");
-  is_ready = true;
-
-  // Start time sync
+  // Immediate time sync request to reduce wait
+  time_sync.request_sent_at = now();
+  ws.send(JSON.stringify({ $: "get_time" }));
+  // Periodic sync every 2s
   setInterval(() => {
     time_sync.request_sent_at = now();
     ws.send(JSON.stringify({ $: "get_time" }));
@@ -92,7 +78,8 @@ ws.addEventListener("message", (event) => {
 // API Functions
 
 export function post(room: string, data: any): void {
-  send(JSON.stringify({$: "post", room, time: server_time(), data}));
+  if (ws.readyState !== WebSocket.OPEN) throw new Error("ws not open in post()");
+  ws.send(JSON.stringify({$: "post", room, time: server_time(), data}));
 }
 
 export function load(room: string, from: number = 0, handler?: MessageHandler): void {
@@ -102,7 +89,8 @@ export function load(room: string, from: number = 0, handler?: MessageHandler): 
     }
     room_watchers.set(room, handler);
   }
-  send(JSON.stringify({$: "load", room, from}));
+  if (ws.readyState !== WebSocket.OPEN) throw new Error("ws not open in load()");
+  ws.send(JSON.stringify({$: "load", room, from}));
 }
 
 export function watch(room: string, handler?: MessageHandler): void {
@@ -112,12 +100,14 @@ export function watch(room: string, handler?: MessageHandler): void {
     }
     room_watchers.set(room, handler);
   }
-  send(JSON.stringify({$: "watch", room}));
+  if (ws.readyState !== WebSocket.OPEN) throw new Error("ws not open in watch()");
+  ws.send(JSON.stringify({$: "watch", room}));
 }
 
 export function unwatch(room: string): void {
   room_watchers.delete(room);
-  send(JSON.stringify({$: "unwatch", room}));
+  if (ws.readyState !== WebSocket.OPEN) throw new Error("ws not open in unwatch()");
+  ws.send(JSON.stringify({$: "unwatch", room}));
 }
 
 export function close(): void {

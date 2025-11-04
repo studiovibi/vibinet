@@ -65,6 +65,7 @@
       // Spawn player after sync
       const spawnX = Math.random() * window.innerWidth;
       const spawnY = Math.random() * window.innerHeight;
+      console.log(`[GAME] Synced; spawning '${nick}' at (${Math.floor(spawnX)},${Math.floor(spawnY)})`);
       game.post({ $: "spawn", nick: nick, px: spawnX, py: spawnY });
 
       // Handle keyboard input after sync

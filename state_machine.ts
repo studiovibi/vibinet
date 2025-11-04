@@ -33,13 +33,24 @@ export class StateMachine<S, P> {
     this.tolerance = tolerance;
     this.room_posts = new Map();
 
-    // Watch the room with callback
-    client.watch(this.room, (post) => {
-      this.room_posts.set(post.index, post);
-    });
+    // Wait for initial time sync before interacting with server
+    client.on_sync(() => {
+      console.log(`[SM] synced; watching+loading room=${this.room}`);
+      // Watch the room with callback
+      client.watch(this.room, (post) => {
+        // Strategic debug: log post summary with effective tick
+        const ot = (post.client_time <= post.server_time - this.tolerance)
+          ? (post.server_time - this.tolerance)
+          : post.client_time;
+        const tick = this.time_to_tick(ot);
+        const kind = (post as any)?.data?.$ ?? "?";
+        console.log(`[SM] recv idx=${post.index} kind=${kind} st=${post.server_time} ct=${post.client_time} -> tick=${tick}`);
+        this.room_posts.set(post.index, post);
+      });
 
-    // Load all existing posts
-    client.load(this.room, 0);
+      // Load all existing posts
+      client.load(this.room, 0);
+    });
   }
 
   time_to_tick(server_time: number): number {
