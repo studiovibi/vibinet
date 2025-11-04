@@ -1,5 +1,5 @@
 import { StateMachine } from "../state_machine.js";
-export { on_sync } from "../client.js";
+export { on_sync, ping } from "../client.js";
 
 // Player type
 type Player = {

@@ -20,7 +20,7 @@
 <body>
   <canvas id="game"></canvas>
   <script type="module">
-    import { createGame, on_sync } from "./dist/index.js";
+    import { createGame, on_sync, ping } from "./dist/index.js";
 
     // Setup canvas
     const canvas = document.getElementById("game");
@@ -125,7 +125,9 @@
       ctx.textBaseline = "top";
       try {
         const st = game.server_time();
+        const rtt = ping();
         ctx.fillText(`server_time: ${st}`, 8, 6);
+        if (isFinite(rtt)) ctx.fillText(`ping: ${Math.round(rtt)} ms`, 8, 24);
       } catch {}
 
       // Render each player

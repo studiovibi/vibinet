@@ -1,24 +1,9 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { appendFileSync, readFileSync, existsSync, mkdirSync, writeFileSync, statSync } from "fs";
+import { appendFileSync, readFileSync, existsSync, mkdirSync } from "fs";
 import http from "http";
 import { readFile } from "fs/promises";
 
-// Kill previous server if exists
-const PID_FILE = ".server.pid";
-if (existsSync(PID_FILE)) {
-  try {
-    const oldPid = parseInt(readFileSync(PID_FILE, "utf-8").trim());
-    process.kill(oldPid, "SIGTERM");
-    console.log(`Killed previous server process (PID: ${oldPid})`);
-    // Wait for port to be released
-    await Bun.sleep(100);
-  } catch (e) {
-    // Process doesn't exist, ignore
-  }
-}
-
-// Save current PID
-writeFileSync(PID_FILE, process.pid.toString());
+// No in-process PID management; deployment script handles restarts
 
 // Build walkers bundle on startup (idempotent)
 async function buildWalkers() {

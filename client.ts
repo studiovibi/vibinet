@@ -2,12 +2,14 @@ type TimeSync = {
   clock_offset: number;     // difference between server clock and local clock
   lowest_ping: number;      // best round-trip time achieved so far
   request_sent_at: number;  // timestamp when last get_time request was sent
+  last_ping: number;        // most recent measured RTT (ms)
 };
 
 const time_sync: TimeSync = {
   clock_offset: Infinity,
   lowest_ping: Infinity,
-  request_sent_at: 0
+  request_sent_at: 0,
+  last_ping: Infinity,
 };
 
 // Auto-detect server hostname (works for both localhost and remote)
@@ -74,6 +76,7 @@ ws.addEventListener("message", (event) => {
     case "info_time": {
       const time = now();
       const ping = time - time_sync.request_sent_at;
+      time_sync.last_ping = ping;
       if (ping < time_sync.lowest_ping) {
         const local_avg_time   = Math.floor((time_sync.request_sent_at + time) / 2);
         time_sync.clock_offset = message.time - local_avg_time;
@@ -129,4 +132,9 @@ export function on_sync(callback: () => void): void {
     return;
   }
   sync_listeners.push(callback);
+}
+
+// Current measured RTT (ms); Infinity if not yet measured
+export function ping(): number {
+  return time_sync.last_ping;
 }
