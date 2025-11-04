@@ -20,7 +20,7 @@
 <body>
   <canvas id="game"></canvas>
   <script type="module">
-    import { createGame } from "./dist/index.js";
+    import { createGame, on_sync } from "./dist/index.js";
 
     // Setup canvas
     const canvas = document.getElementById("game");
@@ -49,17 +49,8 @@
 
     console.log("[GAME] Room:", room, "Nick:", nick);
 
-    // Create game instance
+    // Create game instance (safe to create before sync; watch/load don't require server_time)
     const game = createGame(room);
-
-    // Spawn player at random position
-    const spawnX = Math.random() * window.innerWidth;
-    const spawnY = Math.random() * window.innerHeight;
-
-    // Wait a bit for connection, then spawn
-    setTimeout(() => {
-      game.post({ $: "spawn", nick: nick, px: spawnX, py: spawnY });
-    }, 1000);
 
     // Track key states
     const keyStates = {
@@ -69,25 +60,37 @@
       d: false,
     };
 
-    // Handle keyboard input
-    window.addEventListener("keydown", (e) => {
-      const key = e.key.toLowerCase();
-      if (key === "w" || key === "a" || key === "s" || key === "d") {
-        if (!keyStates[key]) {
-          keyStates[key] = true;
-          game.post({ $: "down", key: key, player: nick });
-        }
-      }
-    });
+    // Setup game only after first time sync
+    on_sync(() => {
+      // Spawn player after sync
+      const spawnX = Math.random() * window.innerWidth;
+      const spawnY = Math.random() * window.innerHeight;
+      game.post({ $: "spawn", nick: nick, px: spawnX, py: spawnY });
 
-    window.addEventListener("keyup", (e) => {
-      const key = e.key.toLowerCase();
-      if (key === "w" || key === "a" || key === "s" || key === "d") {
-        if (keyStates[key]) {
-          keyStates[key] = false;
-          game.post({ $: "up", key: key, player: nick });
+      // Handle keyboard input after sync
+      window.addEventListener("keydown", (e) => {
+        const key = e.key.toLowerCase();
+        if (key === "w" || key === "a" || key === "s" || key === "d") {
+          if (!keyStates[key]) {
+            keyStates[key] = true;
+            game.post({ $: "down", key: key, player: nick });
+          }
         }
-      }
+      });
+
+      window.addEventListener("keyup", (e) => {
+        const key = e.key.toLowerCase();
+        if (key === "w" || key === "a" || key === "s" || key === "d") {
+          if (keyStates[key]) {
+            keyStates[key] = false;
+            game.post({ $: "up", key: key, player: nick });
+          }
+        }
+      });
+
+      // Start render loop after sync
+      console.log("[GAME] Starting render at 24 FPS");
+      setInterval(render, FRAME_TIME);
     });
 
     // Render loop at 24 FPS
@@ -113,6 +116,16 @@
       const ticksToProcess = initialTick !== null ? currentTick - initialTick : 0;
       const state = game.compute_current_state();
       const computeTime = performance.now() - computeStart;
+
+      // Render server time (top-left)
+      ctx.fillStyle = "#000";
+      ctx.font = "14px monospace";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      try {
+        const st = game.server_time();
+        ctx.fillText(`server_time: ${st}`, 8, 6);
+      } catch {}
 
       // Render each player
       ctx.fillStyle = "#000";
@@ -140,9 +153,7 @@
       }
     }
 
-    // Start render loop
-    console.log("[GAME] Starting render at 24 FPS");
-    setInterval(render, FRAME_TIME);
+    // Render loop starts after on_sync above
   </script>
 </body>
 </html>

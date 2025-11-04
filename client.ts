@@ -17,9 +17,10 @@ const ws = new WebSocket(`ws://${window.location.hostname}:8080`);
 type MessageHandler = (message: any) => void;
 const room_watchers = new Map<string, MessageHandler>();
 
-// Queue for messages sent before connection is ready
-const pending_messages: string[] = [];
+// Connection + time sync state
 let is_ready = false;
+let is_synced = false;
+const sync_listeners: Array<() => void> = [];
 
 function now(): number {
   return Math.floor(Date.now());
@@ -28,32 +29,28 @@ function now(): number {
 export function server_time(): number {
   // If not synced yet, return local time
   if (!isFinite(time_sync.clock_offset)) {
-    return now();
+    throw "no server time yet";
   }
   return Math.floor(now() + time_sync.clock_offset);
 }
 
-// Helper to send message (queues if not ready)
+// Helper to send message (no global queue)
 function send(message: string): void {
-  if (is_ready && ws.readyState === WebSocket.OPEN) {
+  if (ws.readyState === WebSocket.OPEN) {
     ws.send(message);
-  } else {
-    pending_messages.push(message);
+    return;
   }
+  if (ws.readyState === WebSocket.CONNECTING) {
+    ws.addEventListener("open", () => ws.send(message), { once: true });
+    return;
+  }
+  throw new Error("WebSocket not open when sending message");
 }
 
 // Setup time sync
 ws.addEventListener("open", () => {
   console.log("[WS] Connected");
   is_ready = true;
-
-  // Send all pending messages
-  while (pending_messages.length > 0) {
-    const message = pending_messages.shift();
-    if (message) {
-      ws.send(message);
-    }
-  }
 
   // Start time sync
   setInterval(() => {
@@ -73,6 +70,11 @@ ws.addEventListener("message", (event) => {
         const local_avg_time   = Math.floor((time_sync.request_sent_at + time) / 2);
         time_sync.clock_offset = message.time - local_avg_time;
         time_sync.lowest_ping  = ping;
+      }
+      if (!is_synced) {
+        is_synced = true;
+        for (const cb of sync_listeners) cb();
+        sync_listeners.length = 0;
       }
       break;
     }
@@ -120,4 +122,13 @@ export function unwatch(room: string): void {
 
 export function close(): void {
   ws.close();
+}
+
+// Register a callback that fires once, on first successful time sync
+export function on_sync(callback: () => void): void {
+  if (is_synced) {
+    callback();
+    return;
+  }
+  sync_listeners.push(callback);
 }

@@ -1,4 +1,5 @@
 import { StateMachine } from "../state_machine.js";
+export { on_sync } from "../client.js";
 
 // Player type
 type Player = {
@@ -50,47 +51,43 @@ function on_tick(state: GameState): GameState {
 
 // on_post: handle player commands
 function on_post(post: GamePost, state: GameState): GameState {
-  if (post.$ === "spawn") {
-    // Add new player to the game
-    return {
-      ...state,
-      [post.nick]: {
-        px: post.px,
-        py: post.py,
-        w: 0,
-        a: 0,
-        s: 0,
-        d: 0,
-      },
-    };
-  } else if (post.$ === "down") {
-    // Set key state to 1
-    const player = state[post.player];
-    if (!player) {
-      return state; // Ignore posts for non-existent players
+  switch (post.$) {
+    case "spawn": {
+      return {
+        ...state,
+        [post.nick]: {
+          px: post.px,
+          py: post.py,
+          w: 0,
+          a: 0,
+          s: 0,
+          d: 0,
+        },
+      };
     }
-    return {
-      ...state,
-      [post.player]: {
-        ...player,
-        [post.key]: 1,
-      },
-    };
-  } else if (post.$ === "up") {
-    // Set key state to 0
-    const player = state[post.player];
-    if (!player) {
-      return state; // Ignore posts for non-existent players
+    case "down": {
+      const player = state[post.player];
+      if (!player) return state;
+      return {
+        ...state,
+        [post.player]: {
+          ...player,
+          [post.key]: 1,
+        },
+      };
     }
-    return {
-      ...state,
-      [post.player]: {
-        ...player,
-        [post.key]: 0,
-      },
-    };
+    case "up": {
+      const player = state[post.player];
+      if (!player) return state;
+      return {
+        ...state,
+        [post.player]: {
+          ...player,
+          [post.key]: 0,
+        },
+      };
+    }
   }
-
   return state;
 }
 
