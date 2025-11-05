@@ -1,6 +1,6 @@
-import { Vibi } from "../vibi.js";
+import { Vibi } from "../src/vibi.ts";
 import { VERSION_LABEL } from "./version.js";
-import { on_sync, ping, gen_name } from "../client.js";
+import { on_sync, ping, gen_name } from "../src/client.ts";
 
 // Player type
 type Player = {

@@ -4,7 +4,7 @@
   "scripts": {
     "check": "tsc --target esnext --noEmit --skipLibCheck",
     "dev": "bun run index.ts",
-    "server": "bun run server.ts",
+    "server": "bun run src/server.ts",
     "client": "bun run client_cli.ts",
     "deploy": "bash scripts/deploy.sh"
   },

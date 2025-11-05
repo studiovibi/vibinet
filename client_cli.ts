@@ -1,5 +1,5 @@
 import * as readline from "readline";
-import * as client from "./client.ts";
+import * as client from "./src/client.ts";
 
 // Setup readline for interactive input
 const rl = readline.createInterface({
