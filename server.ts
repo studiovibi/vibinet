@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { appendFileSync, readFileSync, existsSync, mkdirSync } from "fs";
+import { appendFileSync, readFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import http from "http";
 import { readFile } from "fs/promises";
 
@@ -8,11 +8,23 @@ import { readFile } from "fs/promises";
 // Build walkers bundle on startup (idempotent)
 async function buildWalkers() {
   try {
+    // Generate version label from commit count
+    let version = "V0";
+    try {
+      const revCount = Bun.spawnSync({ cmd: ["git", "rev-list", "--count", "HEAD"] });
+      if (revCount.success) {
+        const count = parseInt(new TextDecoder().decode(revCount.stdout).trim() || "0", 10);
+        if (!Number.isNaN(count)) version = `V${count}`;
+      }
+    } catch {}
+    try { writeFileSync("walkers/version.ts", `export const VERSION_LABEL = "${version}";\n`); } catch {}
+
     const result1 = Bun.spawnSync({ cmd: ["bun", "build", "client.ts", "--outdir", "walkers/dist", "--target=browser", "--format=esm"] });
     const result2 = Bun.spawnSync({ cmd: ["bun", "build", "vibi.ts", "--outdir", "walkers/dist", "--target=browser", "--format=esm"] });
-    const result3 = Bun.spawnSync({ cmd: ["bun", "build", "walkers/index.ts", "--outdir", "walkers/dist", "--target=browser", "--format=esm"] });
-    if (!result1.success || !result2.success || !result3.success) {
-      console.error("[BUILD] walkers build failed", { r1: result1.success, r2: result2.success, r3: result3.success });
+    const result3 = Bun.spawnSync({ cmd: ["bun", "build", "walkers/version.ts", "--outdir", "walkers/dist", "--target=browser", "--format=esm"] });
+    const result4 = Bun.spawnSync({ cmd: ["bun", "build", "walkers/index.ts", "--outdir", "walkers/dist", "--target=browser", "--format=esm"] });
+    if (!result1.success || !result2.success || !result3.success || !result4.success) {
+      console.error("[BUILD] walkers build failed", { r1: result1.success, r2: result2.success, r3: result3.success, r4: result4.success });
     } else {
       console.log("[BUILD] walkers bundle ready");
     }

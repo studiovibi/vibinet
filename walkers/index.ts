@@ -1,4 +1,5 @@
 import { Vibi } from "../vibi.js";
+import { VERSION_LABEL } from "./version.js";
 import { on_sync, ping, gen_name } from "../client.js";
 
 // Player type
@@ -94,7 +95,8 @@ const smooth = (past: GameState, curr: GameState): GameState => {
   return past;
 };
 
-const game = create_game(room, smooth);
+const game: Vibi<GameState, GamePost> = create_game(room, smooth);
+document.title = `Walkers ${VERSION_LABEL}`;
 
 const key_states: Record<string, boolean> = { w: false, a: false, s: false, d: false };
 
