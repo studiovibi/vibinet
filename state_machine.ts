@@ -17,6 +17,7 @@ export class StateMachine<S, P> {
   ticks_per_second: number;
   tolerance: number;
   room_posts: Map<number, Post<P>>;
+  local_posts: Map<string, Post<P>>; // predicted local posts keyed by name
   
   // Compute the authoritative time a post takes effect.
   private official_time(post: Post<P>): number {
@@ -45,13 +46,18 @@ export class StateMachine<S, P> {
     this.ticks_per_second = ticks_per_second;
     this.tolerance = tolerance;
     this.room_posts = new Map();
+    this.local_posts = new Map();
 
     // Wait for initial time sync before interacting with server
     client.on_sync(() => {
       console.log(`[SM] synced; watching+loading room=${this.room}`);
       // Watch the room with callback
       client.watch(this.room, (post) => {
-        this.accept_post(post);
+        // If this official post matches a local predicted one, drop the local copy
+        if (post.name && this.local_posts.has(post.name)) {
+          this.local_posts.delete(post.name);
+        }
+        this.room_posts.set(post.index, post);
       });
 
       // Load all existing posts
@@ -59,46 +65,7 @@ export class StateMachine<S, P> {
     });
   }
 
-  private find_index_by_name(name: string): number | null {
-    for (const [idx, p] of this.room_posts.entries()) {
-      if (p.name && p.name === name) return idx;
-    }
-    return null;
-  }
-
-  private insert_or_shift(targetIndex: number, post: Post<P>): void {
-    let idx = targetIndex;
-    let moving: Post<P> | null = post;
-    while (moving) {
-      const at = this.room_posts.get(idx);
-      // place moving at idx
-      const placed = { ...moving, index: idx } as Post<P>;
-      this.room_posts.set(idx, placed);
-      if (!at) break;
-      if (at.name && moving.name && at.name === moving.name) {
-        // same logical post; updated in place
-        break;
-      }
-      // shift the collided post forward
-      moving = at;
-      idx = idx + 1;
-    }
-  }
-
-  // Accept an incoming official post, handling collisions and dedup by name
-  private accept_post(post: Post<P>): void {
-    const n = post.name;
-    if (n) {
-      const prevIdx = this.find_index_by_name(n);
-      if (prevIdx !== null) {
-        // Remove previous predicted/duplicate and insert at official index
-        this.room_posts.delete(prevIdx);
-        this.insert_or_shift(post.index, post);
-        return;
-      }
-    }
-    this.insert_or_shift(post.index, post);
-  }
+  // No extra helpers needed with local_posts: simplicity preserved
 
   time_to_tick(server_time: number): number {
     // Convert milliseconds to ticks
@@ -155,6 +122,17 @@ export class StateMachine<S, P> {
       timeline.get(official_tick)!.push(post);
     }
 
+    // Merge local predicted posts (not yet confirmed by server)
+    for (const post of this.local_posts.values()) {
+      const official_tick = this.official_tick(post);
+      if (!timeline.has(official_tick)) {
+        timeline.set(official_tick, []);
+      }
+      // Give local posts a very large index to make them apply after official posts in the same tick
+      const localQueued: Post<P> = { ...post, index: Number.MAX_SAFE_INTEGER };
+      timeline.get(official_tick)!.push(localQueued);
+    }
+
     // Sort posts within each tick by index
     for (const posts of timeline.values()) {
       posts.sort((a, b) => a.index - b.index);
@@ -179,21 +157,18 @@ export class StateMachine<S, P> {
 
   // Post data to the room
   post(data: P): void {
-    // Send to server and get generated name
+    // Send to server and record a local predicted copy keyed by name
     const name = client.post(this.room, data);
-    // Also include locally at the last known index for instant feedback
-    const keys = Array.from(this.room_posts.keys());
-    const next_index = keys.length ? Math.max(...keys) + 1 : 0;
     const t = this.server_time();
     const localPost: Post<P> = {
       room: this.room,
-      index: next_index,
+      index: -1,
       server_time: t,
       client_time: t,
       name,
       data,
     };
-    this.insert_or_shift(next_index, localPost);
+    this.local_posts.set(name, localPost);
   }
 
   // Compute current state
