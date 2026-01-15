@@ -97,10 +97,10 @@ if (!nick || nick.length !== 1) {
 console.log("[GAME] Room:", room, "Nick:", nick);
 
 const smooth = (past: GameState, curr: GameState): GameState => {
-  if (curr[nick]) {
-    past[nick] = curr[nick];
+  if (!curr[nick]) {
+    return past;
   }
-  return past;
+  return { ...past, [nick]: curr[nick] };
 };
 
 const game: Vibi<GameState, GamePost> = create_game(room, smooth);
