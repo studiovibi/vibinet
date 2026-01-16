@@ -38,6 +38,8 @@ import * as client from "./client.ts";
 // compute_state_at starts from the nearest snapshot <= at_tick and
 // advances at most (snapshot_stride - 1) ticks. Snapshots store state
 // objects without cloning because state is treated as immutable.
+// For testing, the client API can be injected; by default it uses
+// ./client.ts.
 //
 // Snapshots are keyed by tick. When a post changes a tick within the
 // window (add/remove, remote/local), snapshots at or after that tick
@@ -73,6 +75,15 @@ type TimelineBucket<P> = {
   local: Post<P>[];
 };
 
+type ClientApi<P> = {
+  on_sync: (callback: () => void) => void;
+  watch: (room: string, handler?: (post: Post<P>) => void) => void;
+  load: (room: string, from: number) => void;
+  post: (room: string, data: P) => string;
+  server_time: () => number;
+  ping: () => number;
+};
+
 export class Vibi<S, P> {
   room:                string;
   init:                S;
@@ -81,6 +92,7 @@ export class Vibi<S, P> {
   smooth:              (remote: S, local: S) => S;
   tick_rate:           number;
   tolerance:           number;
+  client_api:          ClientApi<P>;
   remote_posts:        Map<number, Post<P>>;
   local_posts:         Map<string, Post<P>>;
   timeline:            Map<number, TimelineBucket<P>>;
@@ -211,11 +223,11 @@ export class Vibi<S, P> {
       current_tick = end_tick;
     }
 
-    for (
-      let next_tick = current_tick + stride;
-      next_tick <= target_tick;
-      next_tick += stride
-    ) {
+    let next_tick = current_tick + stride;
+    if (this.snapshots.size === 0) {
+      next_tick = start_tick;
+    }
+    for (; next_tick <= target_tick; next_tick += stride) {
       state = this.advance_state(state, current_tick, next_tick);
       this.snapshots.set(next_tick, state);
       current_tick = next_tick;
@@ -344,7 +356,8 @@ export class Vibi<S, P> {
     tolerance: number,
     cache:     boolean = true,
     snapshot_stride: number = 8,
-    snapshot_count:  number = 256
+    snapshot_count:  number = 256,
+    client_api: ClientApi<P> = client
   ) {
     // Initialize configuration, caches, and timeline.
     this.room                 = room;
@@ -354,6 +367,7 @@ export class Vibi<S, P> {
     this.smooth               = smooth;
     this.tick_rate            = tick_rate;
     this.tolerance            = tolerance;
+    this.client_api           = client_api;
     this.remote_posts         = new Map();
     this.local_posts          = new Map();
     this.timeline             = new Map();
@@ -366,10 +380,10 @@ export class Vibi<S, P> {
     this.initial_tick_value   = null;
 
     // Wait for initial time sync before interacting with server
-    client.on_sync(() => {
+    this.client_api.on_sync(() => {
       console.log(`[VIBI] synced; watching+loading room=${this.room}`);
       // Watch the room with callback.
-      client.watch(this.room, (post) => {
+      this.client_api.watch(this.room, (post) => {
         // If this official post matches a local predicted one, drop the local
         // copy.
         if (post.name) {
@@ -379,7 +393,7 @@ export class Vibi<S, P> {
       });
 
       // Load all existing posts
-      client.load(this.room, 0);
+      this.client_api.load(this.room, 0);
     });
   }
 
@@ -390,7 +404,7 @@ export class Vibi<S, P> {
 
   // Read the synchronized server time.
   server_time(): number {
-    return client.server_time();
+    return this.client_api.server_time();
   }
 
   // Read the current server tick.
@@ -408,7 +422,7 @@ export class Vibi<S, P> {
     const curr_tick   = this.server_tick();
     const tick_ms     = 1000 / this.tick_rate;
     const tol_ticks   = Math.ceil(this.tolerance / tick_ms);
-    const rtt_ms      = client.ping();
+    const rtt_ms      = this.client_api.ping();
     const half_rtt    = isFinite(rtt_ms)
       ? Math.ceil((rtt_ms / 2) / tick_ms)
       : 0;
@@ -488,7 +502,7 @@ export class Vibi<S, P> {
 
   // Post data to the room.
   post(data: P): void {
-    const name = client.post(this.room, data);
+    const name = this.client_api.post(this.room, data);
     const t    = this.server_time();
 
     const local_post: Post<P> = {
